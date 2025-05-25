@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>통분 마법진 – 듀얼 서클</title>
+  <style>
+    /* === RESET & BASE === */
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Noto Sans KR',sans-serif;background:radial-gradient(circle at center,#e0f7fa 0%,#a5d6ff 40%,#81c7ff 100%);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px;color:#17415f;overflow-x:hidden}
+    h1{font-size:2.4rem;margin-bottom:8px;text-shadow:0 2px 4px rgba(0,0,0,.12)}
+    #lore{max-width:560px;text-align:center;line-height:1.55;font-size:1rem;margin-bottom:32px;z-index:1}
+
+    /* === HUD === */
+    #hud{display:flex;gap:24px;margin-bottom:16px;font-size:1.1rem;font-weight:600}
+
+    /* === BUTTONS & MSG === */
+    #execBtn,#restartBtn{padding:10px 24px;font-size:1rem;border:none;border-radius:8px;cursor:pointer;box-shadow:0 4px 6px rgba(0,0,0,.2);margin-top:8px}
+    #execBtn{background:#26a69a;color:#fff}
+    #restartBtn{background:#42a5f5;color:#fff;display:none}
+    #message{margin-top:16px;font-size:1.2rem;font-weight:600;height:1.4em}
+
+    /* === ANIM === */
+    @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+    .shake{animation:shake .6s ease both}
+
+    /* === LAYOUT === */
+    #arena{position:relative;width:720px;height:280px;display:flex;justify-content:space-between;align-items:center;margin-bottom:30px}
+    .circle-card{position:relative;width:240px;text-align:center}
+
+    /* === MAGIC CIRCLE === */
+    .magic-circle{width:240px;height:240px;border-radius:50%;background:radial-gradient(circle at center,rgba(255,255,255,.85) 0%,rgba(224,247,255,.6) 60%,rgba(179,229,255,.6) 100%);opacity:.7;box-shadow:0 0 16px rgba(255,255,255,.8),inset 0 0 8px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;transition:transform .8s ease}
+
+    .fraction-display{margin-top:4px;display:flex;flex-direction:column;align-items:center;font-size:1.8rem}
+    .frac-line{width:60px;height:2px;background:#000;margin:2px auto}
+
+    .inputs{margin-top:6px;display:flex;flex-direction:column;align-items:center;gap:2px}
+    .inputs input{width:66px;padding:4px 2px;text-align:center;font-size:1rem;border:2px solid #29b6f6;border-radius:6px}
+
+    /* === BUTTONS & MESSAGE === */
+    .controls{display:flex;gap:12px;margin-top:8px}
+    button{padding:10px 22px;font-size:1rem;border:none;border-radius:8px;cursor:pointer;transition:transform .15s ease;box-shadow:0 4px 6px rgba(0,0,0,.2)}
+    button:active{transform:translateY(2px)}
+    #execBtn{background:#26a69a;color:#fff}
+    #message{margin-top:22px;font-size:1.2rem;font-weight:600;min-height:1.4em}
+
+    @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+    .shake{animation:shake .6s ease both}
+    
+  </style>
+</head>
+<body>
+  <h1>통분 마법진</h1>
+  <p id="lore">양쪽 차원에서 날아온 <strong>두 개의 분수 파편</strong>이 맞닿을 운명! 각각의 마법진을 <em>공통 분모</em>로 통분하여 두 파편을 완벽히 겹치면 마법진이 작동하며 차원의 문이 열립니다.<br>숫자를 입력한 뒤 <strong>‘마법진 실행’</strong>을 눌러 보세요.</p>
+  <div id="hud"><span id="score">점수: 0</span><span id="timer">남은 시간: 30s</span><span id="stage">스테이지: 1</span></div>
+  <div id="arena"></div>
+  <button id="execBtn">마법진 실행</button>
+  <button id="restartBtn">다시 시작하기</button>
+  <div id="message"></div>
+
+<script>
+/********* Utility *********/
+const rad=deg=>deg*Math.PI/180;
+function describeArc(cx,cy,r,s,e){const sx=cx+r*Math.cos(rad(s)),sy=cy+r*Math.sin(rad(s)),ex=cx+r*Math.cos(rad(e)),ey=cy+r*Math.sin(rad(e)),large=e-s<=180?0:1;return`M ${sx} ${sy} A ${r} ${r} 0 ${large} 1 ${ex} ${ey} L ${cx} ${cy} Z`;}
+
+/********* State *********/
+let fractions=[],inputs=[],cards=[];
+let score=0,stage=1,timeLeft=30,timerId=null,gameOver=false;
+const arena=document.getElementById('arena'),msgEl=document.getElementById('message');
+const scoreEl=document.getElementById('score'),timerEl=document.getElementById('timer'),stageEl=document.getElementById('stage');
+const execBtn=document.getElementById('execBtn'),restartBtn=document.getElementById('restartBtn');
+
+/********* Render Circle *********/
+function renderCircle(svg,n,d,fill){const r=120,cx=r,cy=r,step=360/d;let html='';for(let i=0;i<d;i++){const p=describeArc(cx,cy,r-4,-90+i*step,-90+(i+1)*step);html+=`<path d="${p}" fill="${i<n?fill:'#fff'}" stroke="#0277bd" stroke-width="1"/>`;html+=`<line x1="${cx}" y1="${cy}" x2="${cx+(r-4)*Math.cos(rad(-90+i*step))}" y2="${cy+(r-4)*Math.sin(rad(-90+i*step))}" stroke="rgba(0,0,0,0.25)" stroke-width="1"/>`; }svg.innerHTML=html;}
+
+/********* Puzzle *********/
+function randFrac() {
+  let minD = 3, maxD = 9;
+  if (stage >= 10 && stage < 20) {
+    minD = 3;
+    maxD = 15;
+  } else if (stage >= 20) {
+    minD = 3;
+    maxD = 20;
+  }
+  const d = minD + Math.floor(Math.random() * (maxD - minD + 1));
+  const n = 1 + Math.floor(Math.random() * (d - 1));
+  return { n, d };
+}
+function genPuzzle(){fractions=[];const s=new Set();while(fractions.length<2){const f=randFrac(),k=`${f.n}/${f.d}`;if(!s.has(k)){s.add(k);fractions.push(f);}}}
+function build(){arena.innerHTML='';inputs=[];cards=[];fractions.forEach((f,i)=>{const card=document.createElement('div');card.className='circle-card';const circle=document.createElement('div');circle.className='magic-circle';const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('width','240');svg.setAttribute('height','240');renderCircle(svg,f.n,f.d,i? '#ff8a65':'#ffb74d');circle.appendChild(svg);card.appendChild(circle);const fd=document.createElement('div');fd.className='fraction-display';fd.innerHTML=`<span>${f.n}</span><div class='frac-line'></div><span>${f.d}</span>`;card.appendChild(fd);const wrap=document.createElement('div');wrap.className='inputs';const num=document.createElement('input'),den=document.createElement('input');num.type=den.type='number';num.dataset.idx=den.dataset.idx=i;num.dataset.part='num';den.dataset.part='den';wrap.append(num,den);card.appendChild(wrap);arena.appendChild(card);inputs.push({numInput:num,denInput:den});cards.push(card);});}
+
+/********* HUD & Timer *********/
+function updateHUD(){scoreEl.textContent=`점수: ${score}`;timerEl.textContent=`남은 시간: ${timeLeft}s`;stageEl.textContent=`스테이지: ${stage}`;}
+function startTimer(){clearInterval(timerId);timeLeft=31-stage;updateHUD();timerId=setInterval(()=>{timeLeft--;updateHUD();if(timeLeft<=0) gameOverHandler();},1000);} 
+
+/********* Helpers *********/
+function msg(txt,ok=true){msgEl.textContent=txt;msgEl.style.color=ok?'#00695c':'#c62828';}
+function centerCircles(){const ar=arena.getBoundingClientRect(),cx=ar.left+ar.width/2;cards.forEach(card=>{const c=card.querySelector('.magic-circle'),r=c.getBoundingClientRect(),dx=(r.left+r.width/2)-cx;c.style.position='absolute';c.style.left=`${c.offsetLeft}px`;c.style.top=`${c.offsetTop}px`;c.style.transform=`translate(${-dx}px,0)`;c.style.zIndex=10;});}
+function resetPos(){cards.forEach(card=>{const c=card.querySelector('.magic-circle');c.style.position='relative';c.style.left='';c.style.top='';c.style.transform='';c.classList.remove('shake');});}
+
+/********* Game Flow *********/
+function execute(){ if(gameOver) return; const nums=inputs.map(o=>o.numInput.value.trim()),dens=inputs.map(o=>o.denInput.value.trim());if(nums.includes('')||dens.includes('')){msg('모든 숫자를 입력해 주세요',false);return;} const cd=+dens[0];if(dens.some(d=>+d!==cd)){msg('두 분모가 같아야 합니다.',false);return;} for(let i=0;i<2;i++){if(cd%fractions[i].d!==0){msg('공통분모를 다시 생각해보세요',false);return;}} for(let i=0;i<2;i++){if(+nums[i]*fractions[i].d!==fractions[i].n*cd){wrong();return;}} right(nums.map(Number),cd);} 
+function right(newNums,cd){score+=10;stage++;updateHUD();cards.forEach((card,i)=>renderCircle(card.querySelector('svg'),newNums[i],cd,i?'#f06292':'#81c784'));centerCircles();msg('마법진 작동에 성공했습니다!',true);setTimeout(nextStage,2400);} 
+function wrong(){score=Math.max(0,score-5);updateHUD();cards.forEach(card=>card.querySelector('.magic-circle').classList.add('shake'));msg('마법진 작동에 실패했습니다. 다시 계산해 보세요',false);setTimeout(resetPos,1200);} 
+function nextStage(){if(gameOver) return;resetPos();genPuzzle();build();startTimer();msg('');}
+function gameOverHandler(){gameOver=true;clearInterval(timerId);msg('게임 오버! 다시 시작하기를 누르세요',false);execBtn.disabled=true;restartBtn.style.display='inline-block';}
+function restart(){gameOver=false;score=0;stage=1;updateHUD();execBtn.disabled=false;restartBtn.style.display='none';genPuzzle();build();startTimer();msg('');}
+
+/********* Init *********/
+function init(){genPuzzle();build();startTimer();updateHUD();msg('');}
+execBtn.addEventListener('click',execute);
+restartBtn.addEventListener('click',restart);
+init();
+</script>
+</body>
+</html>
